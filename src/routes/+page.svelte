@@ -205,7 +205,7 @@
         class="flex h-full w-72 flex-col gap-2 rounded-md border border-[#EDEDF0] bg-white p-4"
       >
         <div class="flex flex-row items-center justify-between">
-          <h2 class="text-xl font-light text-[#2D2D31]">Go to console</h2>
+          <h2 class="text-xl font-light text-[#2D2D31]">Access your console</h2>
           <span class="icon-arrow-right text-[#D8D8DB]"></span>
         </div>
         <p>
