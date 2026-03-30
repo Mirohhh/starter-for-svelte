@@ -1,12 +1,12 @@
 <script lang="ts">
   import "../app.css";
-  import { client } from "$lib/appwrite";
-  import { AppwriteException } from "appwrite";
   import {
-    PUBLIC_APPWRITE_ENDPOINT,
-    PUBLIC_APPWRITE_PROJECT_ID,
-    PUBLIC_APPWRITE_PROJECT_NAME,
-  } from "$env/static/public";
+    APPWRITE_ENDPOINT,
+    APPWRITE_PROJECT_ID,
+    APPWRITE_PROJECT_NAME,
+    client,
+  } from "$lib/appwrite";
+  import { AppwriteException } from "appwrite";
   import { writable } from "svelte/store";
   import { onMount } from "svelte";
   import appwriteSvg from "../../static/appwrite-icon.svg";
@@ -22,6 +22,7 @@
 
   onMount(() => {
     handleDetailHeight();
+    void sendPing();
   });
 
   type LogEntry = {
@@ -262,19 +263,19 @@
             <div class="flex flex-col">
               <span class="text-[#97979B]">Endpoint</span>
               <span class="truncate">
-                {PUBLIC_APPWRITE_ENDPOINT}
+                {APPWRITE_ENDPOINT}
               </span>
             </div>
             <div class="flex flex-col">
               <span class="text-[#97979B]">Project-ID</span>
               <span class="truncate">
-                {PUBLIC_APPWRITE_PROJECT_ID}
+                {APPWRITE_PROJECT_ID}
               </span>
             </div>
             <div class="flex flex-col">
               <span class="text-[#97979B]">Project name</span>
               <span class="truncate">
-                {PUBLIC_APPWRITE_PROJECT_NAME}
+                {APPWRITE_PROJECT_NAME}
               </span>
             </div>
           </div>
