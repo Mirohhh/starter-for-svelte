@@ -190,8 +190,8 @@
   <title>Task Manager</title>
 </svelte:head>
 
-<main class="checker-background flex min-h-screen flex-col items-center p-5">
-  <div class="mt-20 w-full max-w-[64rem] lg:mt-28 mb-20">
+<main class="checker-background relative flex h-dvh flex-col items-center overflow-hidden p-5">
+  <div class="mt-12 mb-12 flex h-full w-full max-w-[64rem] min-h-0 flex-col lg:mt-12">
     <h1 class="text-center font-[Poppins] text-2xl font-light text-[#2D2D31]">
       Task Manager
     </h1>
@@ -251,6 +251,7 @@
       </div>
     </div>
 
+    <div class="flex min-h-0 flex-1 flex-col pr-1">
     {#if loading}
       <div class="flex justify-center py-12">
         <div role="status">
@@ -275,7 +276,7 @@
       </div>
     {:else if tasks.length > 0}
       <div class="mb-6 flex items-center justify-between">
-        <div class="flex gap-2">
+        <div class="flex gap-2 overflow-y-auto">
           {#each ["all", "active", "completed"] as f}
             <button
               onclick={() => (filter = f as Filter)}
@@ -307,7 +308,7 @@
     {/if}
 
     {#if !loading && !error}
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-3 overflow-y-auto">
         {#each filteredTasks as task (task.$id)}
           <div
             class="flex items-start gap-3 rounded-md border border-[#EDEDF0] bg-white p-4 shadow-[0px_2px_12px_0px_hsla(0,0%,0%,0.03)] transition-opacity duration-200"
@@ -400,7 +401,9 @@
       </div>
     {/if}
 
-    <div class="mt-10 grid grid-rows-3 gap-7 lg:grid-cols-3 lg:grid-rows-none">
+    </div>
+
+    <!-- <div class="mt-6 grid shrink-0 grid-rows-3 gap-7 lg:grid-cols-3 lg:grid-rows-none">
       <div
         class="flex h-full w-full flex-col gap-2 rounded-md border border-[#EDEDF0] bg-white p-4"
       >
@@ -425,6 +428,6 @@
         <h2 class="text-xl font-light text-[#2D2D31]">Stay on track</h2>
         <p>Check off tasks as you go. Completed items fade out gracefully.</p>
       </div>
-    </div>
+    </div> -->
   </div>
 </main>
