@@ -2,34 +2,40 @@ import {
   PUBLIC_APPWRITE_ENDPOINT,
   PUBLIC_APPWRITE_PROJECT_ID,
   PUBLIC_APPWRITE_DATABASE_ID,
-  PUBLIC_APPWRITE_COLLECTION_ID,
+  PUBLIC_APPWRITE_TABLE_ID,
 } from "$env/static/public";
 
-import { Client, Account, Databases, ID, Query } from "appwrite";
+import { Client, Account, TablesDB, ID, Query } from "appwrite";
 
 const client = new Client()
   .setEndpoint(PUBLIC_APPWRITE_ENDPOINT)
   .setProject(PUBLIC_APPWRITE_PROJECT_ID);
 
 const account = new Account(client);
-const databases = new Databases(client);
+const tablesDB = new TablesDB(client);
 
 const DB_ID = PUBLIC_APPWRITE_DATABASE_ID;
-const COL_ID = PUBLIC_APPWRITE_COLLECTION_ID;
+const TABLE_ID = PUBLIC_APPWRITE_TABLE_ID;
 
 export async function listTasks() {
-  const res = await databases.listDocuments(DB_ID, COL_ID, [
-    Query.orderDesc("created_at"),
-    Query.limit(100),
-  ]);
-  return res.documents;
+  const res = await tablesDB.listRows({
+    databaseId: DB_ID,
+    tableId: TABLE_ID,
+    queries: [Query.orderDesc("$createdAt"), Query.limit(100)],
+  });
+  return res.rows;
 }
 
 /**
  * @param {Record<string, unknown>} data
  */
 export async function createTask(data) {
-  return databases.createDocument(DB_ID, COL_ID, ID.unique(), data);
+  return tablesDB.createRow({
+    databaseId: DB_ID,
+    tableId: TABLE_ID,
+    rowId: ID.unique(),
+    data,
+  });
 }
 
 /**
@@ -37,14 +43,23 @@ export async function createTask(data) {
  * @param {Record<string, unknown>} data
  */
 export async function updateTask(documentId, data) {
-  return databases.updateDocument(DB_ID, COL_ID, documentId, data);
+  return tablesDB.updateRow({
+    databaseId: DB_ID,
+    tableId: TABLE_ID,
+    rowId: documentId,
+    data,
+  });
 }
 
 /**
  * @param {string} documentId
  */
 export async function deleteTask(documentId) {
-  return databases.deleteDocument(DB_ID, COL_ID, documentId);
+  return tablesDB.deleteRow({
+    databaseId: DB_ID,
+    tableId: TABLE_ID,
+    rowId: documentId,
+  });
 }
 
-export { client, account, databases, ID, Query };
+export { client, account, tablesDB, ID, Query };
