@@ -7,7 +7,7 @@
 
   type Task = {
     $id: string;
-    text: string;
+    taskName: string;
     description: string;
     priority: Priority;
     completed: boolean;
@@ -26,6 +26,12 @@
     medium: "bg-[#FD366E14] text-[#FD366E]",
     low: "bg-[#10B9813D] text-[#0A714F]",
   };
+  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   let tasks = $state<Array<Task>>([]);
   let newTask = $state("");
@@ -35,6 +41,7 @@
   let sortByPriority = $state(false);
   let loading = $state(true);
   let error = $state("");
+  let pendingTaskIds = $state<Record<string, boolean>>({});
 
   onMount(async () => {
     await fetchTasks();
@@ -43,10 +50,11 @@
   async function fetchTasks() {
     try {
       loading = true;
+      error = "";
       const docs = await listTasks();
       tasks = docs.map((doc: Record<string, unknown>) => ({
         $id: doc.$id as string,
-        text: doc.text as string,
+        taskName: doc.taskName as string,
         description: (doc.description as string) ?? "",
         priority: (doc.priority as Priority) ?? "medium",
         completed: doc.completed as boolean,
@@ -62,28 +70,46 @@
   async function addTask() {
     const text = newTask.trim();
     if (!text) return;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const optimisticTask: Task = {
+      $id: tempId,
+      taskName: text,
+      description: newDescription.trim(),
+      priority: newPriority,
+      completed: false,
+      createdAt: new Date(),
+    };
+
+    tasks = [optimisticTask, ...tasks];
+    newTask = "";
+    newDescription = "";
+    newPriority = "medium";
+
     try {
+      error = "";
       const doc = await createTask({
-        text,
-        description: newDescription.trim(),
-        priority: newPriority,
+        taskName: text,
+        description: optimisticTask.description,
+        priority: optimisticTask.priority,
         completed: false,
       });
-      tasks = [
-        {
-          $id: doc.$id,
-          text: doc.text,
-          description: doc.description ?? "",
-          priority: doc.priority ?? "medium",
-          completed: doc.completed,
-          createdAt: new Date(doc.$createdAt),
-        },
-        ...tasks,
-      ];
-      newTask = "";
-      newDescription = "";
-      newPriority = "medium";
+      tasks = tasks.map((task) =>
+        task.$id === tempId
+          ? {
+              $id: doc.$id,
+              taskName: doc.taskName,
+              description: doc.description ?? "",
+              priority: doc.priority ?? "medium",
+              completed: doc.completed,
+              createdAt: new Date(doc.$createdAt),
+            }
+          : task,
+      );
     } catch (e) {
+      tasks = tasks.filter((task) => task.$id !== tempId);
+      newTask = text;
+      newDescription = optimisticTask.description;
+      newPriority = optimisticTask.priority;
       error = e instanceof Error ? e.message : "Failed to add task";
     }
   }
@@ -91,22 +117,45 @@
   async function toggleTask(id: string) {
     const task = tasks.find((t) => t.$id === id);
     if (!task) return;
+    const nextCompleted = !task.completed;
+    tasks = tasks.map((t) => (t.$id === id ? { ...t, completed: nextCompleted } : t));
+    pendingTaskIds = { ...pendingTaskIds, [id]: true };
     try {
-      const doc = await updateTask(id, { completed: !task.completed });
+      error = "";
+      const doc = await updateTask(id, { completed: nextCompleted });
       tasks = tasks.map((t) =>
         t.$id === id ? { ...t, completed: doc.completed } : t,
       );
     } catch (e) {
+      tasks = tasks.map((t) =>
+        t.$id === id ? { ...t, completed: task.completed } : t,
+      );
       error = e instanceof Error ? e.message : "Failed to update task";
+    } finally {
+      const { [id]: _, ...rest } = pendingTaskIds;
+      pendingTaskIds = rest;
     }
   }
 
   async function handleDelete(id: string) {
+    const removedIndex = tasks.findIndex((t) => t.$id === id);
+    const removedTask = tasks[removedIndex];
+    if (!removedTask) return;
+    tasks = tasks.filter((t) => t.$id !== id);
+    pendingTaskIds = { ...pendingTaskIds, [id]: true };
     try {
+      error = "";
       await deleteTask(id);
-      tasks = tasks.filter((t) => t.$id !== id);
     } catch (e) {
+      tasks = [
+        ...tasks.slice(0, removedIndex),
+        removedTask,
+        ...tasks.slice(removedIndex),
+      ];
       error = e instanceof Error ? e.message : "Failed to delete task";
+    } finally {
+      const { [id]: _, ...rest } = pendingTaskIds;
+      pendingTaskIds = rest;
     }
   }
 
@@ -142,7 +191,7 @@
 </svelte:head>
 
 <main class="checker-background flex min-h-screen flex-col items-center p-5">
-  <div class="mt-20 w-full max-w-[64rem] lg:mt-28">
+  <div class="mt-20 w-full max-w-[64rem] lg:mt-28 mb-20">
     <h1 class="text-center font-[Poppins] text-2xl font-light text-[#2D2D31]">
       Task Manager
     </h1>
@@ -257,7 +306,7 @@
       </div>
     {/if}
 
-    {#if !loading}
+    {#if !loading && !error}
       <div class="flex flex-col gap-3">
         {#each filteredTasks as task (task.$id)}
           <div
@@ -266,11 +315,12 @@
           >
             <button
               onclick={() => toggleTask(task.$id)}
+              disabled={pendingTaskIds[task.$id]}
               class={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border ${
                 task.completed
                   ? "border-[#FD366E52] bg-[#FD366E] text-white"
                   : "border-[#EDEDF0] bg-[#FAFAFB]"
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-50`}
             >
               {#if task.completed}
                 <svg
@@ -295,7 +345,7 @@
                 <span
                   class={`text-sm ${task.completed ? "text-[#97979B] line-through" : "text-[#56565C]"}`}
                 >
-                  {task.text}
+                  {task.taskName}
                 </span>
                 <span
                   class={`rounded-sm px-1 text-xs ${priorityColors[task.priority]}`}
@@ -309,20 +359,14 @@
                 </p>
               {/if}
             </div>
-            <span
-              class="mt-0.5 shrink-0 font-[Fira_Code] text-xs text-[#97979B]"
-            >
-              {task.createdAt.toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+            <span class="mt-0.5 shrink-0 font-[Fira_Code] text-xs text-[#97979B]">
+              {dateFormatter.format(task.createdAt)}
             </span>
             <button
               onclick={() => handleDelete(task.$id)}
               aria-label="Delete task"
-              class="shrink-0 cursor-pointer rounded-md border border-transparent px-2 py-1 text-[#97979B] hover:border-[#FF453A3D] hover:bg-[#FF453A0D] hover:text-[#B31212]"
+              disabled={pendingTaskIds[task.$id]}
+              class="shrink-0 cursor-pointer rounded-md border border-transparent px-2 py-1 text-[#97979B] hover:border-[#FF453A3D] hover:bg-[#FF453A0D] hover:text-[#B31212] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg
                 width="14"
