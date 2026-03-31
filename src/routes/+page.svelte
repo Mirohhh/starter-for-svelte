@@ -1,10 +1,12 @@
 <script lang="ts">
   import "../app.css";
+  import { listTasks, createTask, updateTask, deleteTask } from "$lib/appwrite";
+  import { onMount } from "svelte";
 
   type Priority = "low" | "medium" | "high";
 
   type Task = {
-    id: number;
+    $id: string;
     text: string;
     description: string;
     priority: Priority;
@@ -31,35 +33,81 @@
   let newPriority = $state<Priority>("medium");
   let filter = $state<Filter>("all");
   let sortByPriority = $state(false);
-  let nextId = $state(1);
+  let loading = $state(true);
+  let error = $state("");
 
-  function addTask() {
+  onMount(async () => {
+    await fetchTasks();
+  });
+
+  async function fetchTasks() {
+    try {
+      loading = true;
+      const docs = await listTasks();
+      tasks = docs.map((doc: Record<string, unknown>) => ({
+        $id: doc.$id as string,
+        text: doc.text as string,
+        description: (doc.description as string) ?? "",
+        priority: (doc.priority as Priority) ?? "medium",
+        completed: doc.completed as boolean,
+        createdAt: new Date(doc.$createdAt as string),
+      }));
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load tasks";
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function addTask() {
     const text = newTask.trim();
     if (!text) return;
-    tasks = [
-      ...tasks,
-      {
-        id: nextId++,
+    try {
+      const doc = await createTask({
         text,
         description: newDescription.trim(),
         priority: newPriority,
         completed: false,
-        createdAt: new Date(),
-      },
-    ];
-    newTask = "";
-    newDescription = "";
-    newPriority = "medium";
+      });
+      tasks = [
+        {
+          $id: doc.$id,
+          text: doc.text,
+          description: doc.description ?? "",
+          priority: doc.priority ?? "medium",
+          completed: doc.completed,
+          createdAt: new Date(doc.$createdAt),
+        },
+        ...tasks,
+      ];
+      newTask = "";
+      newDescription = "";
+      newPriority = "medium";
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to add task";
+    }
   }
 
-  function toggleTask(id: number) {
-    tasks = tasks.map((t) =>
-      t.id === id ? { ...t, completed: !t.completed } : t,
-    );
+  async function toggleTask(id: string) {
+    const task = tasks.find((t) => t.$id === id);
+    if (!task) return;
+    try {
+      const doc = await updateTask(id, { completed: !task.completed });
+      tasks = tasks.map((t) =>
+        t.$id === id ? { ...t, completed: doc.completed } : t,
+      );
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to update task";
+    }
   }
 
-  function deleteTask(id: number) {
-    tasks = tasks.filter((t) => t.id !== id);
+  async function handleDelete(id: string) {
+    try {
+      await deleteTask(id);
+      tasks = tasks.filter((t) => t.$id !== id);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to delete task";
+    }
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -99,6 +147,18 @@
       Task Manager
     </h1>
     <p class="mb-8 text-center">Stay organized, one task at a time.</p>
+
+    {#if error}
+      <div
+        class="mb-6 rounded-md border border-[#FF453A3D] bg-[#FF453A0D] p-3 text-sm text-[#B31212]"
+      >
+        {error}
+        <button
+          onclick={() => (error = "")}
+          class="ml-2 cursor-pointer underline">dismiss</button
+        >
+      </div>
+    {/if}
 
     <div
       class="mb-8 rounded-md border border-[#EDEDF0] bg-white p-4 shadow-[0px_2px_12px_0px_hsla(0,0%,0%,0.03)]"
@@ -142,7 +202,29 @@
       </div>
     </div>
 
-    {#if tasks.length > 0}
+    {#if loading}
+      <div class="flex justify-center py-12">
+        <div role="status">
+          <svg
+            aria-hidden="true"
+            class="h-5 w-5 animate-spin fill-[#FD366E] text-gray-200"
+            viewBox="0 0 100 101"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+              fill="currentColor"
+            />
+            <path
+              d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+              fill="currentFill"
+            />
+          </svg>
+          <span class="sr-only">Loading...</span>
+        </div>
+      </div>
+    {:else if tasks.length > 0}
       <div class="mb-6 flex items-center justify-between">
         <div class="flex gap-2">
           {#each ["all", "active", "completed"] as f}
@@ -175,102 +257,104 @@
       </div>
     {/if}
 
-    <div class="flex flex-col gap-3">
-      {#each filteredTasks as task (task.id)}
-        <div
-          class="flex items-start gap-3 rounded-md border border-[#EDEDF0] bg-white p-4 shadow-[0px_2px_12px_0px_hsla(0,0%,0%,0.03)] transition-opacity duration-200"
-          class:opacity-50={task.completed}
-        >
-          <button
-            onclick={() => toggleTask(task.id)}
-            class={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border ${
-              task.completed
-                ? "border-[#FD366E52] bg-[#FD366E] text-white"
-                : "border-[#EDEDF0] bg-[#FAFAFB]"
-            }`}
+    {#if !loading}
+      <div class="flex flex-col gap-3">
+        {#each filteredTasks as task (task.$id)}
+          <div
+            class="flex items-start gap-3 rounded-md border border-[#EDEDF0] bg-white p-4 shadow-[0px_2px_12px_0px_hsla(0,0%,0%,0.03)] transition-opacity duration-200"
+            class:opacity-50={task.completed}
           >
-            {#if task.completed}
+            <button
+              onclick={() => toggleTask(task.$id)}
+              class={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border ${
+                task.completed
+                  ? "border-[#FD366E52] bg-[#FD366E] text-white"
+                  : "border-[#EDEDF0] bg-[#FAFAFB]"
+              }`}
+            >
+              {#if task.completed}
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M2.5 6L5 8.5L9.5 3.5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              {/if}
+            </button>
+            <div class="flex flex-1 flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <span
+                  class={`text-sm ${task.completed ? "text-[#97979B] line-through" : "text-[#56565C]"}`}
+                >
+                  {task.text}
+                </span>
+                <span
+                  class={`rounded-sm px-1 text-xs ${priorityColors[task.priority]}`}
+                >
+                  {task.priority}
+                </span>
+              </div>
+              {#if task.description}
+                <p class="text-xs text-[#97979B]">
+                  {task.description}
+                </p>
+              {/if}
+            </div>
+            <span
+              class="mt-0.5 shrink-0 font-[Fira_Code] text-xs text-[#97979B]"
+            >
+              {task.createdAt.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+            <button
+              onclick={() => handleDelete(task.$id)}
+              aria-label="Delete task"
+              class="shrink-0 cursor-pointer rounded-md border border-transparent px-2 py-1 text-[#97979B] hover:border-[#FF453A3D] hover:bg-[#FF453A0D] hover:text-[#B31212]"
+            >
               <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path
-                  d="M2.5 6L5 8.5L9.5 3.5"
+                  d="M3 3.5L11 11.5M11 3.5L3 11.5"
                   stroke="currentColor"
                   stroke-width="1.5"
                   stroke-linecap="round"
-                  stroke-linejoin="round"
                 />
               </svg>
-            {/if}
-          </button>
-          <div class="flex flex-1 flex-col gap-1">
-            <div class="flex items-center gap-2">
-              <span
-                class={`text-sm ${task.completed ? "text-[#97979B] line-through" : "text-[#56565C]"}`}
-              >
-                {task.text}
-              </span>
-              <span
-                class={`rounded-sm px-1 text-xs ${priorityColors[task.priority]}`}
-              >
-                {task.priority}
-              </span>
-            </div>
-            {#if task.description}
-              <p
-                class={`text-xs ${task.completed ? "text-[#97979B]" : "text-[#97979B]"}`}
-              >
-                {task.description}
-              </p>
+            </button>
+          </div>
+        {:else}
+          <div
+            class="rounded-md border border-[#EDEDF0] bg-white p-8 text-center text-[#97979B]"
+          >
+            {#if filter === "all"}
+              No tasks yet. Add one above to get started.
+            {:else if filter === "active"}
+              No active tasks.
+            {:else}
+              No completed tasks yet.
             {/if}
           </div>
-          <span class="mt-0.5 shrink-0 font-[Fira_Code] text-xs text-[#97979B]">
-            {task.createdAt.toLocaleString("en-US", {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
-          <button
-            onclick={() => deleteTask(task.id)}
-            aria-label="Delete task"
-            class="shrink-0 cursor-pointer rounded-md border border-transparent px-2 py-1 text-[#97979B] hover:border-[#FF453A3D] hover:bg-[#FF453A0D] hover:text-[#B31212]"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M3 3.5L11 11.5M11 3.5L3 11.5"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-      {:else}
-        <div
-          class="rounded-md border border-[#EDEDF0] bg-white p-8 text-center text-[#97979B]"
-        >
-          {#if filter === "all"}
-            No tasks yet. Add one above to get started.
-          {:else if filter === "active"}
-            No active tasks.
-          {:else}
-            No completed tasks yet.
-          {/if}
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
 
     <div class="mt-10 grid grid-rows-3 gap-7 lg:grid-cols-3 lg:grid-rows-none">
       <div
